@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import now
 from datetime import timedelta, timezone
 
-from .models import LeagueGroup, UserLeaguePlacement, League
+from .models import LeagueGroup, UserLeaguePlacement, League, UserWeeklyOutcome
 from .serializers import UserPlacementSerializer, LeagueSerializer
 from accounts.models import CustomUser
 from asgiref.sync import async_to_sync
@@ -39,6 +39,22 @@ class CurrentLeagueView(APIView):
             return Response({"error": "No leagues defined."}, status=500)
 
         logger.debug(f"[CurrentLeagueView] lowest_league={lowest_league.name}")
+
+
+        locked_out = (user.current_league == "")
+        if locked_out:
+            return Response({
+                "locked_out": True,
+                "outcome": {
+                    "finished_rank": 0,
+                    "old_league": "",
+                    "new_league": "",
+                },
+                "currentLeague": "",  # no league
+                "leaderboard": [],
+                "leagues": [],        # or send them anyway if you want
+                "countdown_seconds": 0,
+            })
 
         placement = (
             UserLeaguePlacement.objects
@@ -97,8 +113,20 @@ class CurrentLeagueView(APIView):
 
         logger.debug(f"[CurrentLeagueView] current_time={current_time}, next_monday_dt={next_monday_dt}, countdown_seconds={countdown_seconds}")
 
+        outcome_data = {"finished_rank": 0, "old_league": "", "new_league": ""}
+        try:
+            outcome = user.userweeklyoutcome
+            outcome_data = {
+                "finished_rank": outcome.finished_rank,
+                "old_league": outcome.old_league,
+                "new_league": outcome.new_league,
+            }
+        except:
+            pass
+
         response_data = {
             "currentLeague": placement.league_group.league.name,
+            "outcome": outcome_data,
             "leaderboard": ranked_serialized,
             "leagues": leagues_serialized,
             "countdown_seconds": countdown_seconds,
